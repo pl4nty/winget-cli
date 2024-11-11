@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation.
+﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 #include "pch.h"
 #include "MSStoreInstallerHandler.h"
@@ -291,9 +291,10 @@ namespace AppInstaller::CLI::Workflow
             requiredLocale = context.Args.GetArg(Execution::Args::Type::Locale);
         }
 
-        MSStoreDownloadContext downloadContext{ installer.ProductId, requiredArchitecture, requiredPlatform, requiredLocale, GetAuthenticationArguments(context) };
+        MSStoreDownloadContext downloadContext{ installer.ProductId, requiredArchitecture, requiredPlatform, requiredLocale, {} };
 
         MSStoreDownloadInfo downloadInfo;
+        bool retryWithAuthentication = false;
         try
         {
             context.Reporter.Info() << Resource::String::MSStoreDownloadGetDownloadInfo << std::endl;
@@ -317,7 +318,37 @@ namespace AppInstaller::CLI::Workflow
                 context.Reporter.Error() << Resource::String::MSStoreDownloadGetDownloadInfoFailed << std::endl;
             }
 
-            AICLI_TERMINATE_CONTEXT(re.GetErrorCode());
+            retryWithAuthentication = true;
+        }
+
+        if (retryWithAuthentication)
+        {
+            context.Reporter.Info() << Resource::String::MSStoreDownloadRetryWithAuthentication << std::endl;
+            downloadContext = MSStoreDownloadContext{ installer.ProductId, requiredArchitecture, requiredPlatform, requiredLocale, GetAuthenticationArguments(context) };
+
+            try
+            {
+                downloadInfo = downloadContext.GetDownloadInfo();
+            }
+            catch (const wil::ResultException& re)
+            {
+                AICLI_LOG(CLI, Error, << "Retrying with authentication failed. Error code: " << re.GetErrorCode());
+
+                switch (re.GetErrorCode())
+                {
+                case APPINSTALLER_CLI_ERROR_NO_APPLICABLE_DISPLAYCATALOG_PACKAGE:
+                case APPINSTALLER_CLI_ERROR_NO_APPLICABLE_SFSCLIENT_PACKAGE:
+                    context.Reporter.Error() << Resource::String::MSStoreDownloadNoApplicablePackageFound << std::endl;
+                    break;
+                case APPINSTALLER_CLI_ERROR_SFSCLIENT_PACKAGE_NOT_SUPPORTED:
+                    context.Reporter.Error() << Resource::String::MSStoreDownloadPackageDownloadNotSupported << std::endl;
+                    break;
+                default:
+                    context.Reporter.Error() << Resource::String::MSStoreDownloadGetDownloadInfoFailed << std::endl;
+                }
+
+                AICLI_TERMINATE_CONTEXT(re.GetErrorCode());
+            }
         }
 
         bool skipDependencies = context.Args.Contains(Execution::Args::Type::SkipDependencies);
