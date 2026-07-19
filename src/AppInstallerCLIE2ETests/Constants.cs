@@ -32,6 +32,7 @@ namespace AppInstallerCLIE2ETests
         public const string PowerShellModulePathParameter = "PowerShellModulePath";
         public const string SkipTestSourceParameter = "SkipTestSource";
         public const string ForcedExperimentalFeaturesParameter = "ForcedExperimentalFeatures";
+        public const string LoggingFormatParameter = "LoggingFormat";
         public const string InprocTestbedPathParameter = "InprocTestbedPath";
         public const string InprocTestbedUseTestPackageParameter = "InprocTestbedUseTestPackage";
 

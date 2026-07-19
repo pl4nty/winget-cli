@@ -6,9 +6,11 @@
 #include "TestHooks.h"
 #include <AppInstallerFileLogger.h>
 #include <AppInstallerStrings.h>
-#include <winget/Settings.h>
 
-#include <regex>
+#include <winrt/Windows.Data.Xml.Dom.h>
+
+#include <cstdio>
+#include <ctime>
 
 using namespace AppInstaller::Logging;
 using namespace AppInstaller::Utility;
@@ -211,14 +213,153 @@ TEST_CASE("FileLogger_MaximumSize", "[logging]")
     FileLogger_MaximumSize_Test(tagState, sizeState);
 }
 
+namespace
+{
+    constexpr std::string_view CCMLogStartToken = "<![LOG["sv;
+    constexpr std::string_view CCMLogEndToken = "]LOG]!>"sv;
+
+    // The parsed fields of a single CCM format log entry.
+    struct CCMLogEntry
+    {
+        std::string Message;
+        std::string Time;
+        std::string Date;
+        std::string Component;
+        std::string Context;
+        std::string Type;
+        std::string Thread;
+        std::string File;
+    };
+
+    // Splits file contents into individual CCM entries; a message may span multiple lines so split on the entry start token.
+    std::vector<std::string> SplitCCMEntries(const std::string& fileContents)
+    {
+        std::vector<std::string> result;
+        size_t position = 0;
+
+        // Anything before the first entry (or after the last) that isn't whitespace will end up
+        // attached to an entry and fail parsing, so leading content must be whitespace only.
+        size_t firstEntry = fileContents.find(CCMLogStartToken);
+        REQUIRE(fileContents.find_first_not_of("\r\n \t") == (fileContents.empty() ? std::string::npos : firstEntry));
+
+        position = firstEntry;
+        while (position != std::string::npos)
+        {
+            size_t next = fileContents.find(CCMLogStartToken, position + CCMLogStartToken.size());
+            std::string entry = fileContents.substr(position, (next == std::string::npos ? fileContents.size() : next) - position);
+
+            while (!entry.empty() && (entry.back() == '\n' || entry.back() == '\r'))
+            {
+                entry.pop_back();
+            }
+
+            result.emplace_back(std::move(entry));
+            position = next;
+        }
+
+        return result;
+    }
+
+    // Parses a CCM log entry, using an XML parser to validate and extract the metadata fields.
+    CCMLogEntry ParseCCMLogEntry(const std::string& entry)
+    {
+        INFO("Entry: " << entry);
+
+        CCMLogEntry result;
+
+        REQUIRE(entry.substr(0, CCMLogStartToken.size()) == CCMLogStartToken);
+        size_t endToken = entry.find(CCMLogEndToken);
+        REQUIRE(endToken != std::string::npos);
+        result.Message = entry.substr(CCMLogStartToken.size(), endToken - CCMLogStartToken.size());
+
+        // The metadata portion is an XML-like tag with attributes but no element name:
+        //   <time="..." date="..." component="..." context="..." type="..." thread="..." file="">
+        // Give it an element name so that a real XML parser can validate the structure.
+        std::string metadata = entry.substr(endToken + CCMLogEndToken.size());
+        REQUIRE(metadata.size() > 2);
+        REQUIRE(metadata.front() == '<');
+        REQUIRE(metadata.back() == '>');
+
+        std::string xml = "<entry " + metadata.substr(1, metadata.size() - 2) + "/>";
+        winrt::Windows::Data::Xml::Dom::XmlDocument document;
+        document.LoadXml(winrt::to_hstring(xml));
+
+        auto element = document.DocumentElement();
+        REQUIRE(element.Attributes().Length() == 7u);
+        result.Time = winrt::to_string(element.GetAttribute(L"time"));
+        result.Date = winrt::to_string(element.GetAttribute(L"date"));
+        result.Component = winrt::to_string(element.GetAttribute(L"component"));
+        result.Context = winrt::to_string(element.GetAttribute(L"context"));
+        result.Type = winrt::to_string(element.GetAttribute(L"type"));
+        result.Thread = winrt::to_string(element.GetAttribute(L"thread"));
+        result.File = winrt::to_string(element.GetAttribute(L"file"));
+
+        return result;
+    }
+
+    // Reads the given log file and parses it as a sequence of CCM entries.
+    std::vector<CCMLogEntry> ParseCCMLogFile(const std::filesystem::path& file)
+    {
+        std::ifstream fileStream{ file, std::ios::binary };
+        auto fileContents = ReadEntireStream(fileStream);
+        INFO("File contents: " << fileContents);
+
+        std::vector<CCMLogEntry> result;
+        for (const auto& entry : SplitCCMEntries(fileContents))
+        {
+            result.emplace_back(ParseCCMLogEntry(entry));
+        }
+
+        return result;
+    }
+
+    // Validates the automatic fields of a CCM log entry, given the time range in which it was written.
+    void ValidateCCMLogEntryFields(const CCMLogEntry& entry, Channel channel, int expectedType, std::time_t beforeWrite, std::time_t afterWrite)
+    {
+        INFO("Time: " << entry.Time << ", Date: " << entry.Date);
+
+        // time="HH:MM:SS.mmm<+/-><bias>"
+        int hour = -1, minute = -1, second = -1, milliseconds = -1, bias = -1;
+        char sign = 0;
+        REQUIRE(sscanf_s(entry.Time.c_str(), "%2d:%2d:%2d.%3d%c%d", &hour, &minute, &second, &milliseconds, &sign, 1, &bias) == 6);
+        REQUIRE((sign == '+' || sign == '-'));
+        REQUIRE(bias >= 0);
+        REQUIRE(bias <= 14 * 60);
+        REQUIRE(milliseconds >= 0);
+        REQUIRE(milliseconds <= 999);
+
+        // date="MM-DD-YYYY"
+        int month = -1, day = -1, year = -1;
+        REQUIRE(sscanf_s(entry.Date.c_str(), "%2d-%2d-%4d", &month, &day, &year) == 3);
+
+        // The reconstructed local timestamp must fall within the write window.
+        std::tm writtenTime{};
+        writtenTime.tm_hour = hour;
+        writtenTime.tm_min = minute;
+        writtenTime.tm_sec = second;
+        writtenTime.tm_mon = month - 1;
+        writtenTime.tm_mday = day;
+        writtenTime.tm_year = year - 1900;
+        writtenTime.tm_isdst = -1;
+        std::time_t written = std::mktime(&writtenTime);
+        REQUIRE(written != -1);
+        REQUIRE(written >= beforeWrite - 1);
+        REQUIRE(written <= afterWrite + 1);
+
+        REQUIRE(entry.Component == GetChannelName(channel));
+        REQUIRE(entry.Type == std::to_string(expectedType));
+        REQUIRE(entry.Thread == std::to_string(GetCurrentThreadId()));
+        REQUIRE(entry.File.empty());
+    }
+
+    std::time_t NowAsTimeT()
+    {
+        return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    }
+}
+
 TEST_CASE("FileLogger_CCMFormat", "[logging]")
 {
-    // The CCM/CMTrace log format is opt-in via the "logging.format" user setting; override it for this test.
-    auto settingsGuard = DeleteUserSettingsFiles();
-    SetSetting(AppInstaller::Settings::Stream::PrimaryUserSettings, R"({ "logging": { "format": "ccm" } })");
-    UserSettingsTest userSettings;
-    TestHook::SetUserSettings_Override userSettingsOverride{ userSettings };
-
     // CCM type: 1=Info/Verbose, 2=Warning, 3=Error/Critical.
     Level level = Level::Info;
     int expectedType = 1;
@@ -232,21 +373,135 @@ TEST_CASE("FileLogger_CCMFormat", "[logging]")
 
     TempFile tempFile{ "FileLogger_CCM", ".log" };
     INFO("File: " << tempFile.GetPath().u8string());
+
+    std::time_t beforeWrite = NowAsTimeT();
     {
-        FileLogger logger{ tempFile };
+        CCMFileLogger logger{ tempFile };
         logger.Write(DefaultChannel, level, message);
+    }
+    std::time_t afterWrite = NowAsTimeT();
+
+    auto entries = ParseCCMLogFile(tempFile);
+    REQUIRE(entries.size() == 1);
+    REQUIRE(entries[0].Message == message);
+    ValidateCCMLogEntryFields(entries[0], DefaultChannel, expectedType, beforeWrite, afterWrite);
+}
+
+TEST_CASE("FileLogger_CCMFormat_EndTokenEscaped", "[logging]")
+{
+    // The end token has no official escape; it is replaced so that a message can never terminate the entry early.
+    const std::string message = "prefix ]LOG]!><time=\"oops\"> suffix ]LOG]!> end";
+    const std::string expectedMessage = "prefix |LOG|!><time=\"oops\"> suffix |LOG|!> end";
+
+    TempFile tempFile{ "FileLogger_CCM", ".log" };
+    INFO("File: " << tempFile.GetPath().u8string());
+
+    std::time_t beforeWrite = NowAsTimeT();
+    {
+        CCMFileLogger logger{ tempFile };
+        logger.Write(DefaultChannel, DefaultLevel, message);
+    }
+    std::time_t afterWrite = NowAsTimeT();
+
+    auto entries = ParseCCMLogFile(tempFile);
+    REQUIRE(entries.size() == 1);
+    REQUIRE(entries[0].Message == expectedMessage);
+    ValidateCCMLogEntryFields(entries[0], DefaultChannel, 1, beforeWrite, afterWrite);
+}
+
+TEST_CASE("FileLogger_CCMFormat_MultiLineMessage", "[logging]")
+{
+    const std::string message = "first line\nsecond line\nthird line";
+
+    TempFile tempFile{ "FileLogger_CCM", ".log" };
+    INFO("File: " << tempFile.GetPath().u8string());
+
+    std::time_t beforeWrite = NowAsTimeT();
+    {
+        CCMFileLogger logger{ tempFile };
+        logger.Write(DefaultChannel, DefaultLevel, message);
+        logger.Write(DefaultChannel, DefaultLevel, "second entry");
+    }
+    std::time_t afterWrite = NowAsTimeT();
+
+    auto entries = ParseCCMLogFile(tempFile);
+    REQUIRE(entries.size() == 2);
+    REQUIRE(entries[0].Message == message);
+    REQUIRE(entries[1].Message == "second entry");
+    ValidateCCMLogEntryFields(entries[0], DefaultChannel, 1, beforeWrite, afterWrite);
+    ValidateCCMLogEntryFields(entries[1], DefaultChannel, 1, beforeWrite, afterWrite);
+}
+
+TEST_CASE("FileLogger_CCMFormat_Wrap", "[logging]")
+{
+    TempFile tempFile{ "FileLogger_CCM_Wrap", ".log" };
+    INFO("File: " << tempFile.GetPath().u8string());
+
+    size_t maximumSize = 4096;
+    const std::string headerMessage = "CCM header message";
+    const std::string message = "A message that is repeated to force the log file to wrap multiple times over.";
+
+    std::time_t beforeWrite = NowAsTimeT();
+    {
+        CCMFileLogger logger{ tempFile };
+        logger.SetMaximumSize(static_cast<std::ofstream::off_type>(maximumSize));
+
+        logger.Write(DefaultChannel, DefaultLevel, headerMessage);
+        logger.SetTag(Tag::HeadersComplete);
+
+        // Enough entries to wrap many times over.
+        for (size_t i = 0; i < 200; ++i)
+        {
+            logger.Write(DefaultChannel, DefaultLevel, message + " #" + std::to_string(i));
+        }
+    }
+    std::time_t afterWrite = NowAsTimeT();
+
+    // The maximum may be exceeded slightly by a wrap indicator entry and newlines.
+    REQUIRE(std::filesystem::file_size(tempFile.GetPath()) <= maximumSize + 512);
+
+    // Every entry in the file must still parse cleanly; wrapping must not leave partial entries behind.
+    auto entries = ParseCCMLogFile(tempFile);
+    REQUIRE(entries.size() > 2);
+
+    // The header is preserved across wraps and is followed by the wrap indicator.
+    REQUIRE(entries[0].Message == headerMessage);
+    REQUIRE(entries[1].Message == "--- log file has wrapped ---");
+
+    for (const auto& entry : entries)
+    {
+        ValidateCCMLogEntryFields(entry, DefaultChannel, 1, beforeWrite, afterWrite);
+    }
+
+    // The last entry written must be the last entry in the file.
+    REQUIRE(entries.back().Message == message + " #199");
+}
+
+TEST_CASE("FileLogger_CreateFromSettings", "[logging]")
+{
+    // The logger type is chosen from the "logging.format" user setting at creation; use the settings override hook.
+    std::string settingsJson;
+    bool expectCCM = false;
+    SECTION("Default") { settingsJson = "{}"; expectCCM = false; }
+    SECTION("WinGet format") { settingsJson = R"({ "logging": { "format": "winget" } })"; expectCCM = false; }
+    SECTION("CCM format") { settingsJson = R"({ "logging": { "format": "ccm" } })"; expectCCM = true; }
+
+    UserSettingsTest userSettings{ settingsJson };
+    TestHook::SetUserSettings_Override userSettingsOverride{ userSettings };
+
+    TempFile tempFile{ "FileLogger_Create", ".log" };
+    INFO("File: " << tempFile.GetPath().u8string());
+    {
+        auto logger = FileLogger::Create(tempFile.GetPath());
+        logger->Write(DefaultChannel, DefaultLevel, "format selection test");
     }
 
     std::ifstream fileStream{ tempFile.GetPath(), std::ios::binary };
     auto fileContents = ReadEntireStream(fileStream);
     INFO("File contents: " << fileContents);
 
-    // Expected: <![LOG[<message>]LOG]!><time="HH:MM:SS.mmm+<bias>" date="MM-DD-YYYY" component="<channel>" context="" type="<N>" thread="<id>" file="">
-    std::regex ccmPattern{
-        R"(^<!\[LOG\[CCM format test message\]LOG\]!><time="\d{2}:\d{2}:\d{2}\.\d{3}\+-?\d+" date="\d{2}-\d{2}-\d{4}" component="[^"]*" context="" type=")"
-        + std::to_string(expectedType)
-        + R"(" thread="\d+" file="">)" };
-    REQUIRE(std::regex_search(fileContents, ccmPattern));
+    REQUIRE((fileContents.compare(0, CCMLogStartToken.size(), CCMLogStartToken) == 0) == expectCCM);
+    REQUIRE(fileContents.find("format selection test") != std::string::npos);
 }
 
 TEST_CASE("FileLogger_MaximumSize_ManyWraps", "[logging]")

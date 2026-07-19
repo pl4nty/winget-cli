@@ -60,6 +60,7 @@ namespace AppInstallerCLIE2ETests
             }
 
             WinGetSettingsHelper.ForcedExperimentalFeatures = testParams.ForcedExperimentalFeatures;
+            WinGetSettingsHelper.ForcedLoggingFormat = testParams.LoggingFormat;
             WinGetSettingsHelper.InitializeWingetSettings();
         }
 

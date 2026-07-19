@@ -6,7 +6,9 @@
 #include "Public/AppInstallerRuntime.h"
 #include "Public/AppInstallerStrings.h"
 #include "Public/AppInstallerDateTime.h"
+#include "Public/AppInstallerTelemetry.h"
 #include "Public/winget/UserSettings.h"
+#include "Public/winget/ThreadGlobals.h"
 #include <winget/Filesystem.h>
 #include <corecrt_io.h>
 
@@ -29,7 +31,16 @@ namespace AppInstaller::Logging
             return std::move(strstr).str();
         }
 
-        // Formats a log line in CCM (CMTrace-compatible) format.
+        // The token that ends the message portion of a CCM log entry, and the benign replacement
+        // written when a message happens to contain it. The format has no official escape, so the
+        // token can never be allowed to appear inside the message portion.
+        static constexpr std::string_view s_ccmLogEndToken = "]LOG]!>"sv;
+        static constexpr std::string_view s_ccmLogEndTokenReplacement = "|LOG|!>"sv;
+
+        // Formats a log line in CCM (CMTrace-compatible) format; the format understood by the
+        // CMTrace and OneTrace log viewers. There is no official specification; the field layout
+        // matches the entries written by Configuration Manager clients:
+        //   <![LOG[message]LOG]!><time="HH:mm:ss.fff+bias" date="M-d-yyyy" component="..." context="..." type="N" thread="id" file="">
         std::string ToCCMLogLine(Channel channel, Level level, std::string_view message)
         {
             auto now = std::chrono::system_clock::now();
@@ -40,10 +51,19 @@ namespace AppInstaller::Logging
             auto sinceEpoch = now.time_since_epoch();
             auto leftoverMillis = std::chrono::duration_cast<std::chrono::milliseconds>(sinceEpoch) - std::chrono::duration_cast<std::chrono::seconds>(sinceEpoch);
 
-            // Get UTC bias in minutes (positive means west of UTC, CMTrace uses positive for west)
-            long timezoneBiasSeconds = 0;
-            _get_timezone(&timezoneBiasSeconds);
-            long biasMins = timezoneBiasSeconds / 60;
+            // CMTrace expects the offset of UTC from local time in minutes (positive means west of UTC),
+            // matching TIME_ZONE_INFORMATION.Bias adjusted for daylight saving time.
+            TIME_ZONE_INFORMATION timeZoneInfo{};
+            DWORD timeZoneResult = GetTimeZoneInformation(&timeZoneInfo);
+            long biasMins = timeZoneInfo.Bias;
+            if (timeZoneResult == TIME_ZONE_ID_DAYLIGHT)
+            {
+                biasMins += timeZoneInfo.DaylightBias;
+            }
+            else if (timeZoneResult == TIME_ZONE_ID_STANDARD)
+            {
+                biasMins += timeZoneInfo.StandardBias;
+            }
 
             // CCM type: 1=Info/Verbose, 2=Warning, 3=Error/Critical
             int type;
@@ -55,20 +75,36 @@ namespace AppInstaller::Logging
             default:            type = 1; break;
             }
 
+            // The end token has no official escape; replace it so that a message can never terminate the entry early.
+            std::string escapedMessage{ message };
+            Utility::FindAndReplace(escapedMessage, s_ccmLogEndToken, s_ccmLogEndTokenReplacement);
+
+            // Use the current activity as the context when available.
+            const GUID* activityId = nullptr;
+            if (auto threadGlobals = ThreadLocalStorage::ThreadGlobals::GetForCurrentThread())
+            {
+                activityId = reinterpret_cast<TelemetryTraceLogger*>(threadGlobals->GetTelemetryObject())->GetActivityId();
+            }
+
             std::stringstream strstr;
-            strstr << "<![LOG[" << message << "]LOG]!>"
+            strstr << "<![LOG[" << escapedMessage << "]LOG]!>"
                 << "<time=\""
                 << std::setw(2) << std::setfill('0') << localTime.tm_hour << ":"
                 << std::setw(2) << std::setfill('0') << localTime.tm_min << ":"
                 << std::setw(2) << std::setfill('0') << localTime.tm_sec << "."
                 << std::setw(3) << std::setfill('0') << leftoverMillis.count()
-                << "+" << biasMins << "\""
+                << (biasMins < 0 ? "-" : "+") << (biasMins < 0 ? -biasMins : biasMins) << "\""
                 << " date=\""
                 << std::setw(2) << std::setfill('0') << (1 + localTime.tm_mon) << "-"
                 << std::setw(2) << std::setfill('0') << localTime.tm_mday << "-"
                 << (1900 + localTime.tm_year) << "\""
                 << " component=\"" << GetChannelName(channel) << "\""
-                << " context=\"\""
+                << " context=\"";
+            if (activityId)
+            {
+                strstr << *activityId;
+            }
+            strstr << "\""
                 << " type=\"" << type << "\""
                 << " thread=\"" << GetCurrentThreadId() << "\""
                 << " file=\"\">";
@@ -140,16 +176,7 @@ namespace AppInstaller::Logging
 
     void FileLogger::Write(Channel channel, Level level, std::string_view message) noexcept try
     {
-        std::string log;
-        if (Settings::User().Get<Settings::Setting::LoggingFormat>() == LogFileFormat::CCM)
-        {
-            log = ToCCMLogLine(channel, level, message);
-        }
-        else
-        {
-            log = ToLogLine(channel, level, message);
-        }
-        WriteDirect(channel, level, log);
+        WriteDirect(channel, level, ToLogLine(channel, level, message));
     }
     catch (...) {}
 
@@ -173,19 +200,49 @@ namespace AppInstaller::Logging
     }
     catch (...) {}
 
+    std::unique_ptr<FileLogger> FileLogger::Create()
+    {
+        if (Settings::User().Get<Settings::Setting::LoggingFormat>() == LogFileFormat::CCM)
+        {
+            return std::make_unique<CCMFileLogger>();
+        }
+
+        return std::make_unique<FileLogger>();
+    }
+
+    std::unique_ptr<FileLogger> FileLogger::Create(const std::filesystem::path& filePath)
+    {
+        if (Settings::User().Get<Settings::Setting::LoggingFormat>() == LogFileFormat::CCM)
+        {
+            return std::make_unique<CCMFileLogger>(filePath);
+        }
+
+        return std::make_unique<FileLogger>(filePath);
+    }
+
+    std::unique_ptr<FileLogger> FileLogger::Create(std::string_view fileNamePrefix)
+    {
+        if (Settings::User().Get<Settings::Setting::LoggingFormat>() == LogFileFormat::CCM)
+        {
+            return std::make_unique<CCMFileLogger>(fileNamePrefix);
+        }
+
+        return std::make_unique<FileLogger>(fileNamePrefix);
+    }
+
     void FileLogger::Add()
     {
-        Log().AddLogger(std::make_unique<FileLogger>());
+        Log().AddLogger(Create());
     }
 
     void FileLogger::Add(const std::filesystem::path& filePath)
     {
-        Log().AddLogger(std::make_unique<FileLogger>(filePath));
+        Log().AddLogger(Create(filePath));
     }
 
     void FileLogger::Add(std::string_view fileNamePrefix)
     {
-        Log().AddLogger(std::make_unique<FileLogger>(fileNamePrefix));
+        Log().AddLogger(Create(fileNamePrefix));
     }
 
     void FileLogger::BeginCleanup()
@@ -232,6 +289,7 @@ namespace AppInstaller::Logging
             THROW_IF_WIN32_BOOL_FALSE(SetHandleInformation(reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(filePtr))), HANDLE_FLAG_INHERIT, 0));
 
             m_stream = std::ofstream{ filePtr };
+            m_filePtr = filePtr;
             closeFile.release();
         }
         else
@@ -279,10 +337,44 @@ namespace AppInstaller::Logging
         }
     }
 
+    void FileLogger::TruncateToHeadersEnd()
+    {
+        m_stream.flush();
+
+        if (m_filePtr)
+        {
+            fflush(m_filePtr);
+            _chsize_s(_fileno(m_filePtr), static_cast<long long>(static_cast<std::ofstream::off_type>(m_headersEnd)));
+        }
+
+        m_stream.seekp(m_headersEnd);
+    }
+
     void FileLogger::WrapLogFile()
     {
         m_stream.seekp(m_headersEnd);
         // Yes, we may go over the size limit slightly due to this and the unaccounted for newlines
         m_stream << ToLogLine(Channel::Core, Level::Info, "--- log file has wrapped ---") << std::endl;
+    }
+
+    CCMFileLogger::CCMFileLogger() : FileLogger() {}
+
+    CCMFileLogger::CCMFileLogger(const std::filesystem::path& filePath) : FileLogger(filePath) {}
+
+    CCMFileLogger::CCMFileLogger(const std::string_view fileNamePrefix) : FileLogger(fileNamePrefix) {}
+
+    void CCMFileLogger::Write(Channel channel, Level level, std::string_view message) noexcept try
+    {
+        WriteDirect(channel, level, ToCCMLogLine(channel, level, message));
+    }
+    catch (...) {}
+
+    void CCMFileLogger::WrapLogFile()
+    {
+        // Overwriting in place would leave stale partial entries after the write position,
+        // which parsers of the structured format would see as corrupt XML fragments.
+        // Truncate back to the headers instead so that the file only ever contains whole entries.
+        TruncateToHeadersEnd();
+        m_stream << ToCCMLogLine(Channel::Core, Level::Info, "--- log file has wrapped ---") << std::endl;
     }
 }

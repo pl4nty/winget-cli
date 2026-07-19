@@ -49,6 +49,8 @@ namespace AppInstallerCLIE2ETests.Helpers
             this.InprocTestbedPath = this.InitializeFileParam(Constants.InprocTestbedPathParameter);
 
             this.ForcedExperimentalFeatures = this.InitializeStringArrayParam(Constants.ForcedExperimentalFeaturesParameter);
+
+            this.LoggingFormat = this.InitializeStringParam(Constants.LoggingFormatParameter);
         }
 
         /// <summary>
@@ -167,6 +169,11 @@ namespace AppInstallerCLIE2ETests.Helpers
         /// Gets the experimental features that should be forcibly enabled.
         /// </summary>
         public string[] ForcedExperimentalFeatures { get; }
+
+        /// <summary>
+        /// Gets the log file format ("winget" or "ccm") to force for the entire run, if any.
+        /// </summary>
+        public string LoggingFormat { get; }
 
         /// <summary>
         /// Gets a value indicating whether is the default parameters.

@@ -49,6 +49,9 @@ namespace TestCommon
 
     struct UserSettingsTest : AppInstaller::Settings::UserSettings
     {
+        // Loads the settings from the given content rather than the settings files.
+        UserSettingsTest(const std::optional<std::string>& content = std::nullopt) :
+            AppInstaller::Settings::UserSettings(content) {}
     };
 
     struct GroupPolicyTestOverride : AppInstaller::Settings::GroupPolicy

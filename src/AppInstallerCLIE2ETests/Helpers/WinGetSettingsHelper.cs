@@ -22,6 +22,12 @@ namespace AppInstallerCLIE2ETests.Helpers
         public static string[] ForcedExperimentalFeatures { get; set; }
 
         /// <summary>
+        /// Gets or sets the log file format ("winget" or "ccm") that should be forced for the entire run, if any.
+        /// This allows a full E2E pass to additionally validate the alternate log format.
+        /// </summary>
+        public static string ForcedLoggingFormat { get; set; }
+
+        /// <summary>
         /// Gets the user settings path by calling winget settings export.
         /// </summary>
         /// <returns>Expanded path for user settings.</returns>
@@ -80,6 +86,15 @@ namespace AppInstallerCLIE2ETests.Helpers
                     }
                 },
             };
+
+            var forcedLoggingFormat = ForcedLoggingFormat;
+            if (!string.IsNullOrEmpty(forcedLoggingFormat))
+            {
+                settingsJson["logging"] = new Hashtable()
+                {
+                    { "format", forcedLoggingFormat },
+                };
+            }
 
             // Run winget one time to initialize settings directory
             // when running in unpackaged context
@@ -307,6 +322,17 @@ namespace AppInstallerCLIE2ETests.Helpers
                 {
                     ConfigureFeature(settingsJson, feature, true);
                 }
+            }
+
+            var forcedLoggingFormat = ForcedLoggingFormat;
+            if (!string.IsNullOrEmpty(forcedLoggingFormat))
+            {
+                if (!settingsJson.ContainsKey("logging"))
+                {
+                    settingsJson["logging"] = new JObject();
+                }
+
+                settingsJson["logging"]["format"] = new JValue(forcedLoggingFormat);
             }
 
             SetWingetSettings(settingsJson.ToString());

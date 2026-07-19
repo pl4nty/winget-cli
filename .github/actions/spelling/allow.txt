@@ -27,6 +27,7 @@ binver
 bstr
 BUILDNUMBER
 bytearray
+ccm
 cdn
 cer
 certutil
@@ -37,6 +38,7 @@ cla
 CLASSNOTAVAILABLE
 clsids
 cmake
+cmtrace
 CNG
 COMMANDBARFLYOUT
 COMMONDATA
@@ -213,6 +215,7 @@ nunit
 nupkg
 OAuth
 ODR
+onetrace
 opencode
 openxmlformats
 OSVERSIONINFOEXW

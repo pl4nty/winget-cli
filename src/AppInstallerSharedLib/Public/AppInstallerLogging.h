@@ -103,7 +103,10 @@ namespace AppInstaller::Logging
     {
         // Default WinGet format: "<timestamp> <level> [channel] message"
         WinGet,
-        // CCM/CMTrace-compatible format: "<![LOG[message]LOG]!><time="<time>" date="<date>" component="<channel>" context="" type="N" thread="<id>" file="">"
+        // CCM/CMTrace-compatible format: "<![LOG[message]LOG]!><time="<time>" date="<date>" component="<channel>" context="<activity>" type="N" thread="<id>" file="">"
+        // There is no official specification for the format; the fields written match the entries produced by
+        // Configuration Manager clients, which the CMTrace and OneTrace log viewers understand:
+        // https://learn.microsoft.com/mem/configmgr/core/support/cmtrace
         CCM,
     };
 

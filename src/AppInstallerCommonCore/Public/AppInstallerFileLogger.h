@@ -3,8 +3,10 @@
 #pragma once
 #include <AppInstallerLogging.h>
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -43,7 +45,12 @@ namespace AppInstaller::Logging
 
         void SetTag(Tag tag) noexcept override;
 
-        // Adds a FileLogger to the current Log
+        // Creates a file logger whose type is determined by the logging format user setting.
+        static std::unique_ptr<FileLogger> Create();
+        static std::unique_ptr<FileLogger> Create(const std::filesystem::path& filePath);
+        static std::unique_ptr<FileLogger> Create(std::string_view fileNamePrefix);
+
+        // Adds a file logger, whose type is determined by the logging format user setting, to the current Log
         static void Add();
         static void Add(const std::filesystem::path& filePath);
         static void Add(std::string_view fileNamePrefix);
@@ -52,10 +59,20 @@ namespace AppInstaller::Logging
         static void BeginCleanup();
         static void BeginCleanup(const std::filesystem::path& filePath);
 
+    protected:
+        std::ofstream m_stream;
+
+        // Truncates the file so that it ends at the headers section, leaving the stream positioned there.
+        // Used when wrapping a format that cannot tolerate stale partial entries after the write position.
+        void TruncateToHeadersEnd();
+
+        // Resets the log file state so that it will overwrite the data portion.
+        virtual void WrapLogFile();
+
     private:
         std::string m_name;
         std::filesystem::path m_filePath;
-        std::ofstream m_stream;
+        FILE* m_filePtr = nullptr;
         std::ofstream::pos_type m_headersEnd = 0;
         std::ofstream::off_type m_maximumSize = 0;
 
@@ -67,8 +84,22 @@ namespace AppInstaller::Logging
         // Determines if the logger needs to wrap back to the beginning, doing so when needed.
         // May also shrink the given view if it exceeds the overall maximum.
         void HandleMaximumFileSize(std::string_view& currentLog);
+    };
 
-        // Resets the log file state so that it will overwrite the data portion.
-        void WrapLogFile();
+    // Logs to a file in the CCM (CMTrace-compatible) format.
+    // Each entry is written as:
+    //   <![LOG[message]LOG]!><time="HH:mm:ss.fff+bias" date="M-d-yyyy" component="channel" context="activity id" type="N" thread="id" file="">
+    // which can be viewed with the CMTrace and OneTrace log viewers:
+    // https://learn.microsoft.com/mem/configmgr/core/support/cmtrace
+    struct CCMFileLogger : public FileLogger
+    {
+        CCMFileLogger();
+        explicit CCMFileLogger(const std::filesystem::path& filePath);
+        explicit CCMFileLogger(const std::string_view fileNamePrefix);
+
+        void Write(Channel channel, Level level, std::string_view message) noexcept override;
+
+    protected:
+        void WrapLogFile() override;
     };
 }
