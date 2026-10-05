@@ -535,6 +535,9 @@
     <CopyFileToFolders Include="TestData\Manifest-Bad-DuplicateSha256.yaml">
       <DeploymentContent>true</DeploymentContent>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="TestData\Manifest-Bad-IconSha256Missing.yaml">
+      <DeploymentContent>true</DeploymentContent>
+    </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Bad-IdInvalid.yaml">
       <DeploymentContent>true</DeploymentContent>
     </CopyFileToFolders>
@@ -656,6 +659,9 @@
       <DeploymentContent>true</DeploymentContent>
     </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Bad-ApproximateVersionInPackageVersion.yaml">
+      <DeploymentContent>true</DeploymentContent>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="TestData\Manifest-Good-IconSha256Missing-V1_28.yaml">
       <DeploymentContent>true</DeploymentContent>
     </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Good-InstallerTypeExe-Silent.yaml">

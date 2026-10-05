@@ -1,0 +1,20 @@
+# Bad manifest. IconSha256 is required from manifest version 1.30.0
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.30.0.schema.json
+
+PackageIdentifier: AppInstallerCliTest.TestIcon
+PackageVersion: 1.0.0.0
+PackageLocale: en-US
+PackageName: AppInstaller Test Icon
+Publisher: Microsoft Corporation
+License: Test
+ShortDescription: Icon without IconSha256
+Icons:
+  - IconUrl: https://testIcon-en-US
+    IconFileType: png
+Installers:
+  - Architecture: x86
+    InstallerUrl: https://ThisIsNotUsed
+    InstallerType: msi
+    InstallerSha256: 65DB2F2AC2686C7F2FD69D4A4C6683B888DC55BFA20A0E32CA9F838B51689A3B
+ManifestType: singleton
+ManifestVersion: 1.30.0
