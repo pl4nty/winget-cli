@@ -69,6 +69,46 @@ TEST_CASE("VerifyInstallerTrustLevelAndUpdateInstallerFileMotw", "[DownloadInsta
     INFO(updateMotwOutput.str());
 }
 
+TEST_CASE("RenameDownloadedInstaller_FontExtensionComesFromUri", "[DownloadInstaller][workflow]")
+{
+    // Unlike every other installer type, the font extension is derived from the installer URL
+    // rather than a string literal. Regression test for GetInstallerFileExtension returning a
+    // std::wstring_view into the temporary produced by path::extension(); the resulting read of
+    // freed memory either corrupted the name or threw ERROR_NO_UNICODE_TRANSLATION out of
+    // path::u8string(). Build with /fsanitize=address to catch the lifetime error directly.
+    TempDirectory tempDirectory("RenameFontInstaller");
+
+    // RenameDownloadedInstaller renames in place, so start from the pre-hash-validation style name.
+    std::filesystem::path testInstallerPath = tempDirectory.GetPath() / "downloaded";
+    std::ofstream ofile(testInstallerPath, std::ofstream::out);
+    ofile << "test";
+    ofile.close();
+
+    std::ostringstream renameOutput;
+    TestContext context{ renameOutput, std::cin };
+    auto previousThreadGlobals = context.SetForCurrentThread();
+
+    Manifest manifest;
+    manifest.Id = "Test.AppFont";
+    manifest.Version = "2.0.68";
+    context.Add<Data::Manifest>(manifest);
+
+    ManifestInstaller installer;
+    installer.BaseInstallerType = InstallerTypeEnum::Font;
+    installer.Url = "https://example.com/releases/download/v2.0.68/test-app-font.ttf";
+    context.Add<Data::Installer>(std::move(installer));
+
+    context.Add<Data::InstallerPath>(testInstallerPath);
+
+    context << RenameDownloadedInstaller;
+    INFO(renameOutput.str());
+    REQUIRE_FALSE(context.IsTerminated());
+
+    const auto& renamedInstallerPath = context.Get<Data::InstallerPath>();
+    REQUIRE(renamedInstallerPath.filename().wstring() == L"test-app-font.ttf");
+    REQUIRE(std::filesystem::exists(renamedInstallerPath));
+}
+
 TEST_CASE("ValidateCommand_Dependencies", "[workflow][dependencies]")
 {
     std::ostringstream validateOutput;
