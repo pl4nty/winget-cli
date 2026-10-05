@@ -35,6 +35,10 @@ Added a new `--ignore-unavailable` flag to the `install` command. When installin
 
 Added the contract version 30 `InstallOptions.InstallDependenciesOnly` property for COM callers that need to install a package's dependencies without installing the requested package.
 
+### Manifest schema 1.30: `IconSha256` is required
+
+`Icons[].IconSha256` is now required (and no longer nullable) in the 1.30 locale, default locale and singleton manifest schemas. Earlier manifest versions are unchanged.
+
 ## Bug Fixes
 
 ### Portable installer alias handling

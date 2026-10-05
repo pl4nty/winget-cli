@@ -975,6 +975,7 @@ TEST_CASE("ReadGoodManifests", "[ManifestValidation]")
         { "Manifest-Good-DefaultExpectedReturnCodeInInstallerSuccessCodes.yaml" },
         { "Manifest-Good-InstallerTypeZip-PortableExe.yaml" },
         { "Manifest-Good-InstallerTypeZip-PortableExeUppercase.yaml" },
+        { "Manifest-Good-IconSha256Missing-V1_28.yaml" },
     };
 
     for (auto const& testCase : TestCases)
@@ -999,6 +1000,7 @@ TEST_CASE("ReadBadManifests", "[ManifestValidation]")
         { "Manifest-Bad-DuplicateReturnCode-ExpectedCodes.yaml", "Duplicate installer return code found." },
         { "Manifest-Bad-DuplicateReturnCode-SuccessCodes.yaml", "Duplicate installer return code found." },
         { "Manifest-Bad-DuplicateSha256.yaml", "Multiple Installer URLs found with the same InstallerSha256. Please ensure the accuracy of the URLs.", true },
+        { "Manifest-Bad-IconSha256Missing.yaml", "Missing required property 'IconSha256'" },
         { "Manifest-Bad-IdInvalid.yaml", "Failed to validate against schema associated with property name 'Id'" },
         { "Manifest-Bad-IdMissing.yaml", "Missing required property 'Id'" },
         { "Manifest-Bad-InconsistentSha256.yaml", "The values of InstallerSha256 do not match for all instances of the same InstallerUrl." },

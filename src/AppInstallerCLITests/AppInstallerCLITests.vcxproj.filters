@@ -501,6 +501,9 @@
     <CopyFileToFolders Include="TestData\Manifest-Bad-DuplicateSha256.yaml">
       <Filter>TestData</Filter>
     </CopyFileToFolders>
+    <CopyFileToFolders Include="TestData\Manifest-Bad-IconSha256Missing.yaml">
+      <Filter>TestData</Filter>
+    </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Bad-IdInvalid.yaml">
       <Filter>TestData</Filter>
     </CopyFileToFolders>
@@ -664,6 +667,9 @@
       <Filter>TestData</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Good-InstallerTypeExeRoot-SilentRoot.yaml">
+      <Filter>TestData</Filter>
+    </CopyFileToFolders>
+    <CopyFileToFolders Include="TestData\Manifest-Good-IconSha256Missing-V1_28.yaml">
       <Filter>TestData</Filter>
     </CopyFileToFolders>
     <CopyFileToFolders Include="TestData\Manifest-Good-InstallerTypeExe-Silent.yaml">

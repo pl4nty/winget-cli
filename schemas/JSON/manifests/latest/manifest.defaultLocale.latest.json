@@ -101,14 +101,15 @@
           "description": "Optional icon theme"
         },
         "IconSha256": {
-          "type": [ "string", "null" ],
+          "type": "string",
           "pattern": "^[A-Fa-f0-9]{64}$",
-          "description": "Optional Sha256 of the icon file"
+          "description": "Sha256 of the icon file"
         }
       },
       "required": [
         "IconUrl",
-        "IconFileType"
+        "IconFileType",
+        "IconSha256"
       ]
     }
   },
