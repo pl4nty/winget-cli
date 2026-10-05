@@ -31,6 +31,8 @@ The solution uses:
 - vcpkg for C++ dependencies
 - NuGet for C++ and .NET dependencies
 
+CI uses `/p:PreferredToolArchitecture=x64` to avoid 32-bit linker memory limits without changing the target architecture. Use the same setting for command-line Release builds.
+
 ### Running/Debugging
 
 1. Deploy solution: Build > Deploy Solution
@@ -105,16 +107,16 @@ void WorkflowTask(Execution::Context& context)
 {
     // Check if already terminated
     AICLI_RETURN_IF_TERMINATED(context);
-    
+
     // Access data
     auto& data = context.Get<Data::Installer>();
-    
+
     // Report to user
     context.Reporter.Info() << "Doing something";
-    
+
     // Store data for next workflow
     context.Add<Data::SomeResult>(result);
-    
+
     // Terminate on error
     if (failed)
     {
@@ -160,6 +162,17 @@ void WorkflowTask(Execution::Context& context)
 - Specs required for features (stored in `doc/specs/`); see `.github/instructions/specs.instructions.md` for detailed guidance
 - Follow existing code style (see `stylecop.json`)
 - CI runs on Azure Pipelines (`azure-pipelines.yml`)
+
+## Issues and Pull Requests
+
+- Before filing an issue, search existing open and closed issues for duplicates.
+- Use the GitHub issue forms in `.github/ISSUE_TEMPLATE/`; do not file a blank issue unless a maintainer explicitly asks for one.
+- Bug reports should include the form fields for relevant area, command if applicable, brief description, steps to reproduce, expected behavior, actual behavior, and environment.
+- Feature requests should include the form fields for relevant area, feature or enhancement description, and proposed technical implementation details when known.
+- Keep issue bodies concise and evidence-based. Do not paste large speculative patches into issue bodies; open a pull request or link a branch when code is available.
+- Before opening a pull request, review `CONTRIBUTING.md`, follow the PR template, keep the change focused, and summarize validation performed.
+- AI assistance is allowed, but contributors are fully accountable for AI-assisted output as if they wrote it themselves.
+    - Unless explicitly directed otherwise, confirm with the user that they have reviewed the submission.
 
 ## Useful Commands
 

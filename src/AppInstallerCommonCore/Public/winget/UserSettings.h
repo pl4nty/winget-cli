@@ -102,7 +102,7 @@ namespace AppInstaller::Settings
         EFDirectMSI,
         EFResume,
         EFFonts,
-        EFSourcePriority,
+        EFInteractivePackageSelection,
         // Telemetry
         TelemetryDisable,
         // Install behavior
@@ -144,6 +144,7 @@ namespace AppInstaller::Settings
         // Output behavior
         OutputSortOrder,
         OutputSortDirection,
+        OutputLocale,
 #ifndef AICLI_DISABLE_TEST_HOOKS
         // Debug
         EnableSelfInitiatedMinidump,
@@ -194,7 +195,7 @@ namespace AppInstaller::Settings
         SETTINGMAPPING_SPECIALIZATION(Setting::EFDirectMSI, bool, bool, false, ".experimentalFeatures.directMSI"sv);
         SETTINGMAPPING_SPECIALIZATION(Setting::EFResume, bool, bool, false, ".experimentalFeatures.resume"sv);
         SETTINGMAPPING_SPECIALIZATION(Setting::EFFonts, bool, bool, false, ".experimentalFeatures.fonts"sv);
-        SETTINGMAPPING_SPECIALIZATION(Setting::EFSourcePriority, bool, bool, false, ".experimentalFeatures.sourcePriority"sv);
+        SETTINGMAPPING_SPECIALIZATION(Setting::EFInteractivePackageSelection, bool, bool, false, ".experimentalFeatures.interactivePackageSelection"sv);
         // Telemetry
         SETTINGMAPPING_SPECIALIZATION(Setting::TelemetryDisable, bool, bool, false, ".telemetry.disable"sv);
         // Install behavior
@@ -242,6 +243,7 @@ namespace AppInstaller::Settings
         // Output behavior
         SETTINGMAPPING_SPECIALIZATION(Setting::OutputSortOrder, std::vector<std::string>, std::vector<SortField>, std::vector<SortField>{}, ".output.sortOrder"sv);
         SETTINGMAPPING_SPECIALIZATION(Setting::OutputSortDirection, std::string, SortDirection, SortDirection::Ascending, ".output.sortDirection"sv);
+        SETTINGMAPPING_SPECIALIZATION(Setting::OutputLocale, std::string, std::string, std::string{}, ".output.locale"sv);
         
         // Used to deduce the SettingVariant type; making a variant that includes std::monostate and all SettingMapping types.
         template <size_t... I>

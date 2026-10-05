@@ -45,6 +45,9 @@
 // Returns if the context is terminated.
 #define AICLI_RETURN_IF_TERMINATED(_context_) if ((_context_).IsTerminated()) { return; }
 
+// Returns the specified value if the context is terminated.
+#define AICLI_RETURN_VALUE_IF_TERMINATED(_context_,_ret_) if ((_context_).IsTerminated()) { return _ret_; }
+
 namespace AppInstaller::CLI
 {
     struct Command;
@@ -199,7 +202,7 @@ namespace AppInstaller::CLI::Execution
 
     private:
         DestructionToken m_disableSignalTerminationHandlerOnExit = false;
-        bool m_isTerminated = false;
+        std::atomic<bool> m_isTerminated = false;
         HRESULT m_terminationHR = S_OK;
         size_t m_CtrlSignalCount = 0;
         ContextFlag m_flags = ContextFlag::None;

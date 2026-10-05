@@ -287,7 +287,7 @@ namespace AppInstaller::Settings
         WINGET_VALIDATE_PASS_THROUGH(EFDirectMSI)
         WINGET_VALIDATE_PASS_THROUGH(EFResume)
         WINGET_VALIDATE_PASS_THROUGH(EFFonts)
-        WINGET_VALIDATE_PASS_THROUGH(EFSourcePriority)
+        WINGET_VALIDATE_PASS_THROUGH(EFInteractivePackageSelection)
         WINGET_VALIDATE_PASS_THROUGH(AnonymizePathForDisplay)
         WINGET_VALIDATE_PASS_THROUGH(TelemetryDisable)
         WINGET_VALIDATE_PASS_THROUGH(InteractivityDisable)
@@ -557,6 +557,17 @@ namespace AppInstaller::Settings
             else if (Utility::CaseInsensitiveEquals(value, s_sortDirection_descending))
             {
                 return SortDirection::Descending;
+            }
+
+            return {};
+        }
+
+        WINGET_VALIDATE_SIGNATURE(OutputLocale)
+        {
+            auto normalizedLocale = Locale::NormalizeOutputLocale(value);
+            if (normalizedLocale)
+            {
+                return std::string{ normalizedLocale.value() };
             }
 
             return {};

@@ -245,7 +245,6 @@ namespace AppInstallerCLIE2ETests.Helpers
             ConfigureFeature(settingsJson, "resume", status);
             ConfigureFeature(settingsJson, "reboot", status);
             ConfigureFeature(settingsJson, "fonts", status);
-            ConfigureFeature(settingsJson, "sourcePriority", status);
 
             SetWingetSettings(settingsJson);
         }
@@ -265,6 +264,26 @@ namespace AppInstallerCLIE2ETests.Helpers
             else
             {
                 settingsJson["logging"]["level"] = new JValue(level);
+            }
+
+            SetWingetSettings(settingsJson);
+        }
+
+        /// <summary>
+        /// Configure output locale.
+        /// </summary>
+        /// <param name="locale">Output locale to set; null or empty removes the value.</param>
+        public static void ConfigureOutputLocale(string locale)
+        {
+            JObject settingsJson = GetJsonSettingsObject("output");
+
+            if (string.IsNullOrEmpty(locale))
+            {
+                settingsJson["output"]["locale"]?.Parent?.Remove();
+            }
+            else
+            {
+                settingsJson["output"]["locale"] = new JValue(locale);
             }
 
             SetWingetSettings(settingsJson);
