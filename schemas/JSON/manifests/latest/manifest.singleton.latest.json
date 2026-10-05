@@ -121,7 +121,7 @@
         "IconSha256": {
           "type": [ "string", "null" ],
           "pattern": "^[A-Fa-f0-9]{64}$",
-          "description": "Optional Sha256 of the icon file"
+          "description": "Optional Sha256 of the icon file. While optional for validation, clients require it to display the icon: the hash is used as the icon cache key and integrity check, and icons without it are skipped"
         }
       },
       "required": [
